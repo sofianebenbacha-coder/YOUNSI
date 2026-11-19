@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Base de données – Clichés</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js"></script>
+<style>
+:root{--bg:#f4f6f8;--card:#fff;--text:#1d2630;--muted:#65727f;--accent:#1f6feb;--border:#dfe4ea;--danger:#d1242f;--ok:#1a7f37;color-scheme:light}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#0f1417;--card:#171e23;--text:#e6edf3;--muted:#8b98a5;--accent:#4493f8;--border:#2a343c;--danger:#ff7b72;--ok:#3fb950;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1417;--card:#171e23;--text:#e6edf3;--muted:#8b98a5;--accent:#4493f8;--border:#2a343c;--danger:#ff7b72;--ok:#3fb950;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);padding:env(safe-area-inset-top,0px) 12px env(safe-area-inset-bottom,0px);font-size:15px}
+main{max-width:980px;margin:0 auto;padding:12px 0 40px}
+h1{font-size:20px;margin:8px 0 14px}
+h2{font-size:16px;margin:0 0 12px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+input,textarea,button{font:inherit}
+input[type=text],input[type=date],textarea{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text)}
+textarea{min-height:90px;resize:vertical}
+button{padding:9px 14px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.small{padding:4px 8px;font-size:13px}
+button.danger{color:var(--danger)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+.msg{font-size:14px;margin-top:10px;min-height:20px}
+.msg.ok{color:var(--ok)}.msg.err{color:var(--danger)}
+#preview{max-width:100%;max-height:260px;border-radius:8px;margin-top:10px;display:none}
+.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:8px}
+table{width:100%;border-collapse:collapse;min-width:640px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:left;font-size:14px;white-space:nowrap}
+th{background:var(--bg);font-weight:600;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.stats{display:flex;gap:16px;flex-wrap:wrap;margin:12px 0;font-size:14px;color:var(--muted)}
+.stats b{color:var(--text);font-size:18px;display:block}
+.hint{font-size:13px;color:var(--muted);margin:0 0 10px}
+details summary{cursor:pointer;color:var(--accent);font-size:14px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Base de données – Bons de livraison clichés</h1>
+
+  <section class="card">
+    <h2>1. Lire un bon de livraison</h2>
+    <p class="hint">Prenez une photo du bon (ou choisissez-la), puis lancez la lecture automatique. Vérifiez toujours les champs avant d’enregistrer.</p>
+    <input type="file" id="photo" accept="image/*" capture="environment">
+    <img id="preview" alt="Aperçu du bon">
+    <div class="row">
+      <button class="primary" id="btnOcr">Lire la photo</button>
+    </div>
+    <details style="margin-top:12px">
+      <summary>Ou coller le texte du bon (si la lecture automatique échoue)</summary>
+      <textarea id="rawText" placeholder="Collez ici le texte du bon de livraison…" style="margin-top:8px"></textarea>
+      <div class="row"><button id="btnParse">Analyser le texte</button></div>
+    </details>
+    <div class="msg" id="readMsg"></div>
+  </section>
+
+  <section class="card">
+    <h2>2. Vérifier et enregistrer</h2>
+    <div class="grid">
+      <div><label for="f_date">Date *</label><input type="date" id="f_date"></div>
+      <div><label for="f_bl">N° bon de livraison</label><input type="text" id="f_bl" placeholder="BL/2026/03747"></div>
+      <div><label for="f_nom">Nom de la maquette (cliché) *</label><input type="text" id="f_nom" placeholder="HERCH COMISAD LAHAB"></div>
+      <div><label for="f_surface">Surface (cm²) *</label><input type="text" id="f_surface" inputmode="decimal" placeholder="786.27"></div>
+      <div><label for="f_ref">Référence cliché</label><input type="text" id="f_ref" placeholder="26PF07262"></div>
+      <div><label for="f_client">Client</label><input type="text" id="f_client" placeholder="SOFIANE BENBACHA"></div>
+    </div>
+    <div class="row">
+      <button class="primary" id="btnSave">Enregistrer dans la base</button>
+      <button id="btnClear">Vider le formulaire</button>
+    </div>
+    <div class="msg" id="saveMsg"></div>
+  </section>
+
+  <section class="card">
+    <h2>3. Base de données</h2>
+    <div class="grid" style="grid-template-columns:1fr auto;align-items:end">
+      <div><label for="search">Rechercher (maquette, BL, référence, client, date…)</label><input type="text" id="search" placeholder="Tapez pour filtrer"></div>
+      <div class="row" style="margin:0"><button id="btnCsv">Exporter CSV</button> <button class="danger" id="btnClearDb">Vider la base</button></div>
+    </div>
+    <div class="stats">
+      <div><b id="sCount">0</b>enregistrements</div>
+      <div><b id="sSurface">0</b>cm² au total</div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Date</th><th>N° BL</th><th>Maquette</th><th>Référence</th><th>Client</th><th class="num">Surface (cm²)</th><th></th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+
+    <h2 style="margin-top:18px">Total par maquette</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Maquette</th><th class="num">Nb bons</th><th class="num">Surface totale (cm²)</th></tr></thead>
+        <tbody id="byName"></tbody>
+      </table>
+    </div>
+    <p class="hint" style="margin-top:10px">Les données sont enregistrées dans ce navigateur. Exportez régulièrement le CSV pour les conserver.</p>
+  </section>
+</main>
+
+<script>
+const KEY = 'bl_cliches_db';
+let db = loadDb();
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function loadDb(){
+  try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch(e){ return []; }
+}
+function saveDb(){
+  try { localStorage.setItem(KEY, JSON.stringify(db)); return true; }
+  catch(e){ setMsg('saveMsg', 'Sauvegarde impossible : ' + e.message, 'err'); return false; }
+}
+function setMsg(id, text, cls=''){
+  const el = $(id); el.textContent = text; el.className = 'msg ' + cls;
+}
+function toNumber(s){
+  if (s == null) return NaN;
+  return parseFloat(String(s).replace(/\s/g,'').replace(',', '.'));
+}
+function frDate(iso){
+  return iso ? iso.split('-').reverse().join('/') : '';
+}
+
+/* ---------- Extraction du texte du bon ---------- */
+function parseBL(text){
+  const t = text.replace(/\r/g, '');
+  const r = {};
+
+  let m = t.match(/BL\s*\/\s*\d{4}\s*\/\s*\d{3,6}/i);
+  if (m) r.bl = m[0].replace(/\s/g, '').toUpperCase();
+
+  m = t.match(/Date\s*:?\s*(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})/i);
+  if (m) r.date = `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+
+  m = t.match(/Client\s*:\s*(?!CL\d)([^\n]+)/i);
+  if (m) r.client = m[1].trim();
+
+  m = t.match(/\b\d{2}PF\d{4,6}\b/i);
+  if (m) r.ref = m[0].toUpperCase();
+
+  if (r.ref){
+    // Le texte qui suit la référence sur la ligne du tableau : nom de la maquette, puis unité, puis quantité
+    const refHit = t.match(new RegExp(r.ref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+    if (refHit){
+      const after = t.slice(refHit.index + refHit[0].length);
+      const words = [];
+      for (const w of after.split(/\s+/)){
+        if (/^[A-Za-zÀ-ÿ'’\-]{2,}$/.test(w) && !/^(CM|CMS|PCS)$/i.test(w)) words.push(w);
+        else if (words.length) break;
+        else if (/^[\d.,]/.test(w)) break;
+      }
+      if (words.length) r.nom = words.join(' ');
+      // Qté × Prix U HT = Montant HT : on cherche le trio de nombres qui vérifie cette égalité
+      const flat = after.replace(/(\d)\s+(?=\d{3}[.,]\d{2}(?!\d))/g, '$1');
+      const nums = (flat.match(/\d{1,6}[.,]\d{2}(?!\d)/g) || []).slice(0, 8).map(toNumber);
+      let found = null;
+      for (let i = 0; i < nums.length && found === null; i++)
+        for (let j = i + 1; j < nums.length && found === null; j++)
+          for (let k = j + 1; k < nums.length && found === null; k++)
+            if (Math.abs(nums[i] * nums[j] - nums[k]) <= 0.02 * nums[k]) found = nums[i];
+      r.surface = found !== null ? found : nums[0];
+    }
+  }
+  if (!r.surface){
+    m = t.match(/(?:CM|C\s?M|cm)\s*[²2]?\s+(\d[\d\s]*[.,]\d+)/i);
+    if (m) r.surface = toNumber(m[1]);
+  }
+  if (r.surface && !isNaN(r.surface)) r.surface = String(r.surface); else delete r.surface;
+  return r;
+}
+
+/* Extraction tolérante aux erreurs de lecture (cette déclaration remplace la précédente de parseBL) */
+function parseBL(text){
+  const t = text.replace(/\r/g, '');
+  const r = {};
+  const SKIP = new Set(['CLICHE','POLYMERE','EURL','POLYSLIM','POLY','SLIM','SOFIANE','BENBACHA','ZAIDI','MARWA','TEST','BBA','CLIENT','ARTICLE','REF','DESTINATAIRE','ADRESSE','GERANT','CODE','NIF','NIS','NIN','RC','ART','TEL','LIVRAISON','BON','VISA','COMMERCIALE','CONDITIONS','GENERALES','SERVICE','FACTURATION','TOTAL','HT','TTC','TVA','NET','DROIT','TIMBRE','REMISE','COMMERCIAL','PAIEMENT','DELAI','IMMEDIAT','MODE','ARRETEE','SOMME','DINAR','CENTIMES','ET','DE','CM','UNITE','QTE','PRIX','MONTANT','CLR','DATE','ETABLI','BL']);
+  const isName = w => /^[A-ZÀ-Ý'’\-]{2,}$/.test(w) && !SKIP.has(w);
+
+  // N° BL, tolérant aux séparateurs mal lus
+  let m = t.match(/B\s*L\s*[\/.\-:|]?\s*(\d{4})\s*[\/.\-:|]?\s*(\d{3,6})/i)
+       || t.match(/\b(20\d{2})\s*[\/.\-]\s*(\d{5})\b/);
+  if (m) r.bl = `BL/${m[1]}/${m[2]}`;
+
+  // Date
+  m = t.match(/Date\s*:?\s*(\d{1,2})\s*[\/.\-]\s*(\d{1,2})\s*[\/.\-]\s*(\d{4})/i)
+   || t.match(/(\d{1,2})\s*[\/.\-]\s*(\d{1,2})\s*[\/.\-]\s*(20\d{2})/);
+  if (m) r.date = `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+
+  // Client
+  m = t.match(/Client\s*:\s*(?!CL\d)([^\n]+)/i);
+  if (m) r.client = m[1].trim();
+
+  // Référence cliché
+  m = t.match(/\b\d{2}\s?PF\s?\d{4,6}\b/i);
+  if (m) r.ref = m[0].replace(/\s/g, '').toUpperCase();
+
+  // Ligne du tableau contenant la référence
+  const refLine = t.split('\n').find(l => /\b\d{2}\s?PF\s?\d{4,6}\b/i.test(l)) || null;
+
+  // Nom de la maquette : mots en capitales après la référence, sinon meilleur groupe de capitales
+  let nom = null;
+  if (refLine){
+    const rm = refLine.match(/\b\d{2}\s?PF\s?\d{4,6}\b/i);
+    const words = [];
+    for (const w of refLine.slice(rm.index + rm[0].length).split(/\s+/)){
+      if (isName(w)) words.push(w);
+      else if (words.length) break;
+    }
+    if (words.length) nom = words.join(' ');
+  }
+  if (!nom){
+    const runs = (t.match(/[A-ZÀ-Ý'’\-]{2,}(?:[ \t]+[A-ZÀ-Ý'’\-]{2,})*/g) || [])
+      .map(s => s.split(/\s+/).filter(isName)).filter(a => a.length);
+    const best = runs.find(a => a.length >= 2) || runs[0];
+    if (best) nom = best.join(' ');
+  }
+  if (nom) r.nom = nom;
+
+  // Quantité (surface) : Qté × Prix U HT = Montant HT
+  const flat = t.replace(/(\d)\s+(?=\d{3}[.,]\d{2}(?!\d))/g, '$1');
+  const nums = (flat.match(/\d{1,6}[.,]\d{2}(?!\d)/g) || []).map(toNumber).slice(0, 12);
+  let surf = null;
+  search: for (let i = 0; i < nums.length; i++)
+    for (let j = i + 1; j < nums.length; j++)
+      for (let k = j + 1; k < nums.length; k++)
+        if (Math.abs(nums[i] * nums[j] - nums[k]) <= 0.02 * nums[k]) { surf = nums[i]; break search; }
+  if (surf === null){
+    m = t.match(/(?:CM|C\s?M)\s*[²2]?\s+(\d[\d\s]*[.,]\d+)/i);
+    if (m) surf = toNumber(m[1]);
+  }
+  if (surf === null && refLine){
+    // Dernier recours : premier nombre décimal supérieur à 1 après la référence sur la ligne du tableau
+    const rm2 = refLine.match(/\b\d{2}\s?PF\s?\d{4,6}\b/i);
+    const after2 = refLine.slice(rm2.index + rm2[0].length).replace(/(\d)\s+(?=\d{3}[.,]\d{2})/g, '$1');
+    const cand = (after2.match(/\d{1,6}[.,]\d{2}(?!\d)/g) || []).map(toNumber).find(v => v > 1);
+    if (cand !== undefined) surf = cand;
+  }
+  if (surf !== null && !isNaN(surf)) r.surface = String(surf);
+  return r;
+}
+
+function fillForm(r){
+  if (r.date)    $('f_date').value = r.date;
+  if (r.bl)      $('f_bl').value = r.bl;
+  if (r.nom)     $('f_nom').value = r.nom;
+  if (r.ref)     $('f_ref').value = r.ref;
+  if (r.client)  $('f_client').value = r.client;
+  if (r.surface) $('f_surface').value = r.surface;
+}
+
+function countFound(r){
+  return ['date','bl','nom','ref','surface'].filter(k => r[k]).length;
+}
+
+/* ---------- Lecture ---------- */
+$('photo').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f){ $('preview').style.display = 'none'; return; }
+  $('preview').src = URL.createObjectURL(f);
+  $('preview').style.display = 'block';
+});
+
+$('btnOcr').addEventListener('click', async () => {
+  const f = $('photo').files[0];
+  if (!f){ setMsg('readMsg', 'Choisissez d’abord une photo du bon.', 'err'); return; }
+  if (!window.Tesseract){
+    setMsg('readMsg', 'Moteur de lecture indisponible. Utilisez « Coller le texte » ou saisissez les champs.', 'err');
+    return;
+  }
+  setMsg('readMsg', 'Lecture en cours…');
+  try {
+    const { data } = await Tesseract.recognize(f, 'fra', {
+      logger: m => { if (m.status === 'recognizing text') setMsg('readMsg', 'Lecture… ' + Math.round(m.progress * 100) + ' %'); }
+    });
+    $('rawText').value = data.text;
+    $('rawText').closest('details').open = true;
+    const r = parseBL(data.text);
+    fillForm(r);
+    const n = countFound(r);
+    setMsg('readMsg', `${n} champ(s) détecté(s) sur 5. Vérifiez les valeurs ci-dessous avant d’enregistrer.`, n >= 3 ? 'ok' : 'err');
+  } catch(err){
+    setMsg('readMsg', 'Échec de la lecture : ' + err.message + '. Essayez « Coller le texte » ou saisissez les champs.', 'err');
+  }
+});
+
+$('btnParse').addEventListener('click', () => {
+  const txt = $('rawText').value.trim();
+  if (!txt){ setMsg('readMsg', 'Collez d’abord le texte du bon.', 'err'); return; }
+  const r = parseBL(txt);
+  fillForm(r);
+  const n = countFound(r);
+  setMsg('readMsg', `${n} champ(s) détecté(s) sur 5. Vérifiez avant d’enregistrer.`, n >= 3 ? 'ok' : 'err');
+});
+
+/* ---------- Formulaire ---------- */
+function readForm(){
+  return {
+    date: $('f_date').value,
+    bl: $('f_bl').value.trim().toUpperCase(),
+    nom: $('f_nom').value.trim().replace(/\s+/g, ' '),
+    ref: $('f_ref').value.trim().toUpperCase(),
+    client: $('f_client').value.trim(),
+    surface: toNumber($('f_surface').value)
+  };
+}
+function clearForm(){
+  ['f_date','f_bl','f_nom','f_ref','f_client','f_surface'].forEach(id => $(id).value = '');
+}
+
+$('btnSave').addEventListener('click', () => {
+  const rec = readForm();
+  if (!rec.date || !rec.nom || !rec.surface || isNaN(rec.surface)){
+    setMsg('saveMsg', 'Date, nom de la maquette et surface (nombre) sont obligatoires.', 'err');
+    return;
+  }
+  if (rec.bl && db.some(x => x.bl === rec.bl)){
+    setMsg('saveMsg', 'Le bon ' + rec.bl + ' est déjà dans la base.', 'err');
+    return;
+  }
+  rec.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  db.push(rec);
+  if (!saveDb()){ db.pop(); return; }
+  clearForm();
+  render();
+  setMsg('saveMsg', 'Enregistré.', 'ok');
+});
+
+$('btnClear').addEventListener('click', () => { clearForm(); setMsg('saveMsg', ''); });
+
+/* ---------- Base, recherche, totaux ---------- */
+function filtered(){
+  const q = $('search').value.trim().toLowerCase();
+  return db
+    .filter(x => !q || [x.date, frDate(x.date), x.bl, x.nom, x.ref, x.client, String(x.surface)]
+      .some(v => String(v || '').toLowerCase().includes(q)))
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+function render(){
+  const list = filtered();
+
+  $('rows').innerHTML = list.map(x => `
+    <tr>
+      <td>${esc(frDate(x.date))}</td>
+      <td>${esc(x.bl)}</td>
+      <td>${esc(x.nom)}</td>
+      <td>${esc(x.ref)}</td>
+      <td>${esc(x.client)}</td>
+      <td class="num">${Number(x.surface).toLocaleString('fr-FR', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+      <td><button class="small danger" data-del="${esc(x.id)}">Supprimer</button></td>
+    </tr>`).join('') || '<tr><td colspan="7" style="color:var(--muted)">Aucun enregistrement.</td></tr>';
+
+  const total = list.reduce((s, x) => s + Number(x.surface || 0), 0);
+  $('sCount').textContent = list.length;
+  $('sSurface').textContent = total.toLocaleString('fr-FR', {minimumFractionDigits:2, maximumFractionDigits:2});
+
+  const groups = {};
+  list.forEach(x => {
+    const k = x.nom || '—';
+    groups[k] = groups[k] || { n: 0, s: 0 };
+    groups[k].n++; groups[k].s += Number(x.surface || 0);
+  });
+  $('byName').innerHTML = Object.entries(groups)
+    .sort((a, b) => b[1].s - a[1].s)
+    .map(([k, g]) => `<tr><td>${esc(k)}</td><td class="num">${g.n}</td><td class="num">${g.s.toLocaleString('fr-FR', {minimumFractionDigits:2, maximumFractionDigits:2})}</td></tr>`)
+    .join('') || '<tr><td colspan="3" style="color:var(--muted)">Aucune donnée.</td></tr>';
+}
+
+$('rows').addEventListener('click', e => {
+  const id = e.target.dataset.del;
+  if (!id) return;
+  const rec = db.find(x => x.id === id);
+  if (!rec || !confirm('Supprimer le bon ' + (rec.bl || rec.nom) + ' ?')) return;
+  db = db.filter(x => x.id !== id);
+  saveDb();
+  render();
+});
+
+$('search').addEventListener('input', render);
+
+/* ---------- Export CSV (séparateur ; et virgule décimale, compatible Excel français) ---------- */
+$('btnCsv').addEventListener('click', () => {
+  const head = ['Date', 'N° BL', 'Client', 'Maquette', 'Référence', 'Surface (cm2)'];
+  const cell = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const lines = [head.map(cell).join(';')];
+  filtered().forEach(x => {
+    lines.push([frDate(x.date), x.bl, x.client, x.nom, x.ref,
+      String(Number(x.surface)).replace('.', ',')].map(cell).join(';'));
+  });
+  const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'base_cliches_' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+});
+
+$('btnClearDb').addEventListener('click', () => {
+  if (!db.length){ alert('La base est déjà vide.'); return; }
+  if (!confirm('Supprimer définitivement les ' + db.length + ' enregistrement(s) ? Pensez à exporter le CSV avant.')) return;
+  db = [];
+  saveDb();
+  render();
+  setMsg('saveMsg', 'Base vidée.', 'ok');
+});
+
+render();
+</script>
+</body>
+</html>
