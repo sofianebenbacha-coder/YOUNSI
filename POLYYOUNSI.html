@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Base de données - Clichés</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #0f172a; color: #e2e8f0;
+    min-height: 100vh; padding: 12px; font-size: 16px;
+  }
+  h1 { font-size: 1.3rem; text-align: center; margin: 10px 0 4px; color: #38bdf8; }
+  .sub { text-align: center; color: #94a3b8; font-size: .85rem; margin-bottom: 14px; }
+  .card {
+    background: #1e293b; border-radius: 12px; padding: 16px;
+    margin-bottom: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.4);
+  }
+  .card h2 { font-size: 1rem; color: #7dd3fc; margin-bottom: 10px; }
+  button {
+    background: #0284c7; color: #fff; border: none; border-radius: 10px;
+    padding: 12px 18px; font-size: 1rem; cursor: pointer; width: 100%;
+    margin-top: 8px; font-weight: 600;
+  }
+  button:hover { background: #0369a1; }
+  button.secondary { background: #334155; }
+  button.secondary:hover { background: #475569; }
+  button.danger { background: #b91c1c; }
+  button.danger:hover { background: #991b1b; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .row2 { display: flex; gap: 8px; }
+  .row2 button { flex: 1; }
+  select, input[type="file"] {
+    width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #475569;
+    background: #0f172a; color: #e2e8f0; font-size: 1rem; margin-top: 6px;
+  }
+  label { display: block; margin-top: 12px; font-size: .9rem; color: #cbd5e1; }
+  .preview-wrap { overflow-x: auto; margin-top: 10px; border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: .8rem; min-width: 500px; }
+  th, td { border: 1px solid #334155; padding: 6px 8px; text-align: left; white-space: nowrap; }
+  th { background: #0ea5e9; color: #0f172a; position: sticky; top: 0; }
+  tr:nth-child(even) { background: #16213b; }
+  .badge { display: inline-block; background: #164e63; color: #7dd3fc; border-radius: 20px;
+    padding: 4px 12px; font-size: .8rem; margin-right: 6px; }
+  .info { background: #164e63; border-radius: 8px; padding: 10px; font-size: .85rem;
+    margin-top: 10px; color: #bae6fd; }
+  .stats { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .stat { flex: 1; min-width: 100px; background: #0f172a; border-radius: 10px; padding: 10px; text-align: center; }
+  .stat b { display: block; font-size: 1.3rem; color: #38bdf8; }
+  .stat span { font-size: .75rem; color: #94a3b8; }
+  .hidden { display: none; }
+  .mini { padding: 4px 10px; font-size: .75rem; width: auto; border-radius: 6px; margin-top: 0; }
+  #search { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #475569;
+    background: #0f172a; color: #e2e8f0; margin-top: 8px; }
+  .drop {
+    border: 2px dashed #0284c7; border-radius: 12px; padding: 24px 12px;
+    text-align: center; color: #7dd3fc; cursor: pointer;
+  }
+  .chk { width: 22px; height: 22px; accent-color: #22c55e; cursor: pointer; }
+  .chk:checked + span { color: #4ade80; }
+  tr.row-delivered td { background: #14532d22; }
+  tr.row-delivered td:nth-child(3) { color: #86efac; text-decoration: line-through; }
+  .filter-active { background: #0369a1 !important; outline: 2px solid #38bdf8; }
+</style>
+</head>
+<body>
+
+<h1>📷 Base de données Clichés</h1>
+<p class="sub">Importez vos fichiers Excel, choisissez vos colonnes, enrichissez votre base sans doublons.</p>
+
+<!-- ÉTAPE 1 : CHARGER UN FICHIER -->
+<div class="card" id="card-upload">
+  <h2>1. Charger un fichier Excel</h2>
+  <div class="drop" id="drop-zone">Appuyez pour choisir un fichier<br><small style="color:#94a3b8">.xlsx, .xls, .csv</small></div>
+  <input type="file" id="file-input" accept=".xlsx,.xls,.csv" style="display:none">
+  <div id="file-info"></div>
+</div>
+
+<!-- ÉTAPE 2 : APERÇU + LIGNE D'EN-TÊTE -->
+<div class="card hidden" id="card-header">
+  <h2>2. Aperçu du fichier</h2>
+  <p style="font-size:.85rem;color:#94a3b8">Indiquez la ligne qui contient les noms des colonnes (ex. la ligne 4 dans votre fichier type).</p>
+  <label>Ligne d'en-tête : <select id="header-row"></select></label>
+  <div class="preview-wrap"><table id="preview-table"></table></div>
+  <button id="btn-columns">Continuer ➜</button>
+</div>
+
+<!-- ÉTAPE 3 : CHOISIR LES COLONNES -->
+<div class="card hidden" id="card-mapping">
+  <h2>3. Choisir les 3 colonnes</h2>
+  <label>📅 Colonne « Date » : <select id="sel-date"></select></label>
+  <label>🏷️ Colonne « Nom du cliché » : <select id="sel-nom"></select></label>
+  <label>📐 Colonne source de la « Surface » : <select id="sel-surface"></select></label>
+  <div class="info">💡 La <b>Surface</b> sera calculée automatiquement : <b>valeur de la colonne ÷ 5</b></div>
+  <button id="btn-import">Ajouter à la base de données ➕</button>
+</div>
+
+<!-- RÉSULTAT D'IMPORT -->
+<div class="card hidden" id="card-result">
+  <h2>✅ Résultat de l'import</h2>
+  <div id="import-result"></div>
+</div>
+
+<!-- BASE DE DONNÉES -->
+<div class="card" id="card-db">
+  <h2>💾 Ma base de données</h2>
+  <div class="stats">
+    <div class="stat"><b id="st-total">0</b><span>enregistrements</span></div>
+    <div class="stat"><b id="st-deliv">0</b><span>livrés 📦</span></div>
+    <div class="stat"><b id="st-sum">0</b><span>surface totale</span></div>
+  </div>
+  <input type="search" id="search" placeholder="🔍 Rechercher un cliché…">
+  <div class="row2" style="margin-top:8px">
+    <button class="secondary mini" style="flex:1" data-filter="all">Tous</button>
+    <button class="secondary mini" style="flex:1" data-filter="yes">📦 Livrés</button>
+    <button class="secondary mini" style="flex:1" data-filter="no">⏳ Non livrés</button>
+  </div>
+  <div class="preview-wrap" style="max-height:350px;overflow-y:auto;margin-top:8px">
+    <table id="db-table"><thead><tr><th>#</th><th>Date</th><th>Nom du cliché</th><th>Surface</th><th>Livrée 📦</th><th></th></tr></thead><tbody></tbody></table>
+  </div>
+  <div class="row2">
+    <button class="secondary" id="btn-export">⬇️ Exporter en Excel</button>
+  </div>
+  <div class="row2">
+    <button class="secondary" id="btn-export-csv">⬇️ Exporter en CSV</button>
+    <button class="danger" id="btn-clear">🗑️ Vider la base</button>
+  </div>
+</div>
+
+<script>
+/* ================= DONNÉES ================= */
+const DB_KEY = 'cliches_db_v1';
+let db = JSON.parse(localStorage.getItem(DB_KEY) || '[]').map(r => ({ livree: false, ...r }));
+let workbookData = null;   // { sheetName, rows: [[...]], headerRow }
+let delivFilter = 'all';   // 'all' | 'yes' | 'no'
+
+function saveDb() { localStorage.setItem(DB_KEY, JSON.stringify(db)); }
+
+/* numéro de série Excel -> Date */
+function excelDate(n) {
+  const d = new Date(Math.round((n - 25569) * 86400 * 1000));
+  return d.toISOString().slice(0, 10);
+}
+function fmtDate(v) {
+  if (v == null || v === '') return '';
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  if (typeof v === 'number' && v > 20000 && v < 80000) return excelDate(v);
+  const d = new Date(v);
+  if (!isNaN(d)) return d.toISOString().slice(0, 10);
+  return String(v);
+}
+function fmtNum(v) {
+  if (v == null || v === '') return '';
+  return Number(v);
+}
+
+/* ================= ÉTAPE 1 : LECTURE DU FICHIER ================= */
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => { if (e.target.files[0]) readFile(e.target.files[0]); });
+
+function readFile(file) {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const wb = XLSX.read(ev.target.result, { type: 'array', cellDates: true });
+      // feuille non vide par défaut
+      let best = null;
+      wb.SheetNames.forEach(name => {
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' });
+        if (!best && rows.some(r => r.some(c => c !== ''))) best = { sheetName: name, rows };
+      });
+      if (!best) { alert('Le fichier ne contient aucune donnée.'); return; }
+      workbookData = best;
+      document.getElementById('file-info').innerHTML =
+        `<div class="info">📄 <b>${file.name}</b> — feuille « ${best.sheetName} » — ${best.rows.length} lignes</div>`;
+      showHeaderStep();
+    } catch (err) { alert('Erreur de lecture : ' + err.message); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ================= ÉTAPE 2 : EN-TÊTE ================= */
+function showHeaderStep() {
+  const sel = document.getElementById('header-row');
+  sel.innerHTML = '';
+  const max = Math.min(workbookData.rows.length, 30);
+  for (let i = 0; i < max; i++) {
+    const o = document.createElement('option');
+    o.value = i;
+    o.textContent = 'Ligne ' + (i + 1);
+    sel.appendChild(o);
+  }
+  // auto-détection : première ligne contenant 2+ cellules non vides
+  let guess = 0;
+  for (let i = 0; i < max; i++) {
+    const filled = workbookData.rows[i].filter(c => String(c).trim() !== '').length;
+    if (filled >= 2) { guess = i; break; }
+  }
+  sel.value = guess;
+  document.getElementById('card-header').classList.remove('hidden');
+  renderPreview();
+  document.getElementById('card-header').scrollIntoView({ behavior: 'smooth' });
+}
+document.getElementById('header-row').addEventListener('change', renderPreview);
+
+function getHeaders() {
+  const hr = +document.getElementById('header-row').value;
+  return { hr, headers: workbookData.rows[hr].map((c, i) => String(c).trim() || ('Colonne ' + (i + 1))) };
+}
+
+function renderPreview() {
+  const { hr, headers } = getHeaders();
+  const rows = workbookData.rows.slice(hr + 1, hr + 9);
+  let html = '<tr><th>#</th>' + headers.map(h => `<th>${escapeHtml(h)}</th>`).join('') + '</tr>';
+  rows.forEach((r, i) => {
+    html += `<tr><td style="color:#64748b">${i + 1}</td>` +
+      headers.map((_, j) => `<td>${escapeHtml(displayCell(r[j]))}</td>`).join('') + '</tr>';
+  });
+  document.getElementById('preview-table').innerHTML = html;
+}
+function displayCell(v) {
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  return String(v ?? '');
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+/* ================= ÉTAPE 3 : MAPPING ================= */
+document.getElementById('btn-columns').addEventListener('click', () => {
+  const { headers } = getHeaders();
+  ['sel-date', 'sel-nom', 'sel-surface'].forEach((id, k) => {
+    const sel = document.getElementById(id);
+    sel.innerHTML = headers.map((h, i) => `<option value="${i}">${escapeHtml(h)}</option>`).join('');
+    sel.selectedIndex = Math.min(k, headers.length - 1);
+  });
+  // suggestions automatiques
+  headers.forEach((h, i) => {
+    const t = h.toLowerCase();
+    if (t.includes('date')) document.getElementById('sel-date').value = i;
+    if (t.includes('nom') || t.includes('client')) document.getElementById('sel-nom').value = i;
+    if (t.includes('objet') || t.includes('facture') || t.includes('montant') || t.includes('surface')) document.getElementById('sel-surface').value = i;
+  });
+  document.getElementById('card-mapping').classList.remove('hidden');
+  document.getElementById('card-mapping').scrollIntoView({ behavior: 'smooth' });
+});
+
+/* ================= IMPORT ================= */
+document.getElementById('btn-import').addEventListener('click', () => {
+  const { hr } = getHeaders();
+  const iDate = +document.getElementById('sel-date').value;
+  const iNom = +document.getElementById('sel-nom').value;
+  const iSurf = +document.getElementById('sel-surface').value;
+
+  const existing = new Set(db.map(r => r.date + '|' + r.nom + '|' + r.surface));
+  let added = 0, dupes = 0, empty = 0;
+
+  workbookData.rows.slice(hr + 1).forEach(r => {
+    const nom = String(r[iNom] ?? '').trim();
+    const date = fmtDate(r[iDate]);
+    const val = fmtNum(r[iSurf]);
+    if (!nom && !date && val === '') { empty++; return; }
+    if (!nom || !date || val === '' || isNaN(val)) { empty++; return; }
+    const surface = Math.round((val / 5) * 100) / 100;
+    const key = date + '|' + nom + '|' + surface;
+    if (existing.has(key)) { dupes++; return; }
+    existing.add(key);
+    db.push({ date, nom, surface, livree: false });
+    added++;
+  });
+
+  saveDb();
+  renderDb();
+  document.getElementById('import-result').innerHTML =
+    `<span class="badge">✅ ${added} ajouté(s)</span>` +
+    `<span class="badge" style="background:#7c2d12;color:#fdba74">⏭️ ${dupes} doublon(s) ignoré(s)</span>` +
+    `<span class="badge" style="background:#334155;color:#94a3b8">${empty} ligne(s) vide(s) ignorée(s)</span>` +
+    `<div class="info">Base actuelle : <b>${db.length}</b> enregistrements au total.</div>`;
+  document.getElementById('card-result').classList.remove('hidden');
+  document.getElementById('card-result').scrollIntoView({ behavior: 'smooth' });
+});
+
+/* ================= AFFICHAGE DE LA BASE ================= */
+function renderDb() {
+  const q = document.getElementById('search').value.toLowerCase();
+  const tbody = document.querySelector('#db-table tbody');
+  let total = 0, delivered = 0;
+  let html = '';
+  db.forEach((r, i) => {
+    total += r.surface;
+    if (r.livree) delivered++;
+    if (q && !(r.nom.toLowerCase().includes(q) || r.date.includes(q))) return;
+    if (delivFilter === 'yes' && !r.livree) return;
+    if (delivFilter === 'no' && r.livree) return;
+    html += `<tr class="${r.livree ? 'row-delivered' : ''}"><td>${i + 1}</td><td>${escapeHtml(r.date)}</td><td>${escapeHtml(r.nom)}</td>` +
+      `<td><b>${r.surface}</b></td>` +
+      `<td style="text-align:center"><input type="checkbox" class="chk" ${r.livree ? 'checked' : ''} onchange="toggleLivree(${i})" title="Marquer comme livré"></td>` +
+      `<td style="white-space:nowrap"><button class="mini secondary" onclick="editNom(${i})">✏️</button> ` +
+      `<button class="mini danger" onclick="delRow(${i})">✕</button></td></tr>`;
+  });
+  tbody.innerHTML = html || '<tr><td colspan="6" style="text-align:center;color:#64748b">Aucun enregistrement</td></tr>';
+  document.getElementById('st-total').textContent = db.length;
+  document.getElementById('st-deliv').textContent = delivered;
+  document.getElementById('st-sum').textContent = Math.round(total * 100) / 100;
+  document.querySelectorAll('[data-filter]').forEach(b =>
+    b.classList.toggle('filter-active', b.dataset.filter === delivFilter));
+}
+document.getElementById('search').addEventListener('input', renderDb);
+document.querySelectorAll('[data-filter]').forEach(b =>
+  b.addEventListener('click', () => { delivFilter = b.dataset.filter; renderDb(); }));
+function toggleLivree(i) { db[i].livree = !db[i].livree; saveDb(); renderDb(); }
+function editNom(i) {
+  const nouveau = prompt('Modifier le nom du cliché :', db[i].nom);
+  if (nouveau === null) return;            // annulé
+  const val = nouveau.trim();
+  if (!val) { alert('Le nom ne peut pas être vide.'); return; }
+  db[i].nom = val;
+  saveDb();
+  renderDb();
+}
+function delRow(i) { db.splice(i, 1); saveDb(); renderDb(); }
+document.getElementById('btn-clear').addEventListener('click', () => {
+  if (confirm('Vider toute la base de données ?')) { db = []; saveDb(); renderDb(); }
+});
+
+/* ================= EXPORT ================= */
+document.getElementById('btn-export').addEventListener('click', () => {
+  if (!db.length) { alert('La base est vide.'); return; }
+  const aoa = [['Date', 'Nom du cliché', 'Surface (÷5)', 'Livrée'],
+    ...db.map(r => [r.date, r.nom, r.surface, r.livree ? 'Oui' : 'Non'])];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{ wch: 12 }, { wch: 40 }, { wch: 14 }, { wch: 10 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Base Clichés');
+  const d = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `base_cliches_${d}.xlsx`);
+});
+document.getElementById('btn-export-csv').addEventListener('click', () => {
+  if (!db.length) { alert('La base est vide.'); return; }
+  const csv = 'Date;Nom du cliché;Surface;Livrée\n' +
+    db.map(r => `${r.date};"${r.nom.replace(/"/g, '""')}";${r.surface};${r.livree ? 'Oui' : 'Non'}`).join('\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'base_cliches.csv';
+  a.click();
+});
+
+renderDb();
+</script>
+</body>
+</html>
